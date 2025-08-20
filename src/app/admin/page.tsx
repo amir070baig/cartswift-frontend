@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-
 type Product = {
   id: number;
   name: string;
