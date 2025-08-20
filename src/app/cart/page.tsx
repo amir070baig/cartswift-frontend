@@ -14,70 +14,76 @@ type CartItem = {
 
 export default function CartPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const totalPrice = cart.reduce((total, item) => total + item.price * item.quantity, 0);
 
   useEffect(() => {
     const storedCart = JSON.parse(localStorage.getItem("cart") || "[]");
     setCart(storedCart);
   }, []);
 
-
   const handleCheckout = async () => {
-  const res = await fetch("http://localhost:5000/api/payment/create-order", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ amount: totalPrice }),
-  });
+    try {
+      // Use your backend URL (from Railway)
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
-  const order = await res.json();
-  const razorpayLoaded = await loadRazorpay();
-  if (!razorpayLoaded) {
-    alert("Failed to load Razorpay SDK");
-    return;
-  }
-
-  const options = {
-    key: "rzp_test_R6iRVufVFOXiD5",
-    amount: order.amount,
-    currency: "INR",
-    name: "My Store",
-    description: "Test Transaction",
-    order_id: order.id,
-    handler: async function (response: any) {
-      const verifyRes = await fetch("http://localhost:5000/api/payment/verify", {
+      const res = await fetch(`${backendUrl}/api/payment/create-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          razorpay_order_id: response.razorpay_order_id,
-          razorpay_payment_id: response.razorpay_payment_id,
-          razorpay_signature: response.razorpay_signature,
-          amount: totalPrice,
-        }),
+        body: JSON.stringify({ amount: totalPrice }),
       });
 
-      const data = await verifyRes.json();
-      if (data.success) {
-        alert("Payment successful! Order saved.");
-        localStorage.removeItem("cart");
-        window.location.href = "/";
-      } else {
-        alert("Payment verification failed");
+      const order = await res.json();
+      const razorpayLoaded = await loadRazorpay();
+      if (!razorpayLoaded) {
+        alert("Failed to load Razorpay SDK");
+        return;
       }
-    },
-    theme: { color: "#3399cc" },
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, // ✅ read from env
+        amount: order.amount,
+        currency: "INR",
+        name: "My Store",
+        description: "Test Transaction",
+        order_id: order.id,
+        handler: async function (response: any) {
+          const verifyRes = await fetch(`${backendUrl}/api/payment/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              amount: totalPrice,
+            }),
+          });
+
+          const data = await verifyRes.json();
+          if (data.success) {
+            alert("Payment successful! Order saved.");
+            localStorage.removeItem("cart");
+            window.location.href = "/";
+          } else {
+            alert("Payment verification failed");
+          }
+        },
+        theme: { color: "#3399cc" },
+      };
+
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+    } catch (error) {
+      console.error("Checkout error:", error);
+      alert("Something went wrong during checkout");
+    }
   };
 
-  const paymentObject = new (window as any).Razorpay(options);
-  paymentObject.open();
-};
-
-
   const updateQuantity = (id: number, change: number) => {
-    const updatedCart = cart
-      .map((item) =>
-        item.id === id
-          ? { ...item, quantity: Math.max(1, item.quantity + change) }
-          : item
-      );
+    const updatedCart = cart.map((item) =>
+      item.id === id
+        ? { ...item, quantity: Math.max(1, item.quantity + change) }
+        : item
+    );
     setCart(updatedCart);
     localStorage.setItem("cart", JSON.stringify(updatedCart));
   };
@@ -88,13 +94,13 @@ export default function CartPage() {
     localStorage.setItem("cart", JSON.stringify(updatedCart));
   };
 
-  const totalPrice = cart.reduce((total, item) => total + item.price * item.quantity, 0);
-
   if (cart.length === 0) {
     return (
       <div className="text-center mt-10">
         <h2 className="text-2xl font-bold">Your cart is empty</h2>
-        <Link href="/" className="text-blue-600 mt-4 inline-block">Go shopping</Link>
+        <Link href="/" className="text-blue-600 mt-4 inline-block">
+          Go shopping
+        </Link>
       </div>
     );
   }
@@ -104,8 +110,15 @@ export default function CartPage() {
       <h1 className="text-3xl font-bold mb-6">Your Cart</h1>
       <div className="grid gap-6">
         {cart.map((item) => (
-          <div key={item.id} className="flex items-center gap-4 border p-4 rounded-lg shadow-sm">
-            <img src={item.image} alt={item.name} className="w-20 h-20 object-cover rounded" />
+          <div
+            key={item.id}
+            className="flex items-center gap-4 border p-4 rounded-lg shadow-sm"
+          >
+            <img
+              src={item.image}
+              alt={item.name}
+              className="w-20 h-20 object-cover rounded"
+            />
             <div className="flex-1">
               <h2 className="text-lg font-semibold">{item.name}</h2>
               <p className="text-gray-600">₹{item.price}</p>
